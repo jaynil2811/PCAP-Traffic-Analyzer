@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="analytics-dashboard">
+    <!-- Overview Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="bi bi-file-earmark-binary"></i>
+                <h3>Total Packets</h3>
+                <p id="totalPackets">-</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="bi bi-speedometer2"></i>
+                <h3>Average Bandwidth</h3>
+                <p id="avgBandwidth">-</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="bi bi-graph-up"></i>
+                <h3>Peak Traffic</h3>
+                <p id="peakTraffic">-</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="bi bi-hdd-network"></i>
+                <h3>Total Data</h3>
+                <p id="totalData">-</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="chart-card">
+                <h3>Traffic Flow</h3>
+                <div id="trafficFlow">
+                    <img id="trafficPlot" class="img-fluid" alt="Traffic Flow">
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="chart-card">
+                <h3>Protocol Distribution</h3>
+                <canvas id="protocolChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Protocol Details and IP Statistics -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="data-card">
+                <h3>Protocol Details</h3>
+                <div id="protocolDetails" class="table-responsive">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>Protocol</th>
+                                <th>Count</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="protocolTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="data-card">
+                <h3>IP Statistics</h3>
+                <div id="ipStats" class="table-responsive">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>Packets Sent</th>
+                                <th>Packets Received</th>
+                                <th>Total Bytes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ipStatsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to format bytes
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Function to update analytics dashboard
+    function updateDashboard(data) {
+        // Update overview cards
+        document.getElementById('totalPackets').textContent = data.total_packets;
+        document.getElementById('avgBandwidth').textContent = formatBytes(data.bandwidth_usage.average) + '/s';
+        document.getElementById('peakTraffic').textContent = formatBytes(data.bandwidth_usage.peak) + '/s';
+        document.getElementById('totalData').textContent = formatBytes(data.bandwidth_usage.total_mb * 1024 * 1024);
+
+        // Update traffic flow plot
+        if (data.traffic_plot) {
+            document.getElementById('trafficPlot').src = 'data:image/png;base64,' + data.traffic_plot;
+        }
+
+        // Create protocol distribution chart
+        const protocolData = Object.entries(data.protocols);
+        new Chart(document.getElementById('protocolChart'), {
+            type: 'doughnut',
+            data: {
+                labels: protocolData.map(item => item[0]),
+                datasets: [{
+                    data: protocolData.map(item => item[1]),
+                    backgroundColor: [
+                        '#4CAF50', '#2196F3', '#FFC107', '#E91E63',
+                        '#9C27B0', '#00BCD4', '#FF5722', '#795548'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: 'white'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Update protocol details table
+        const protocolTableBody = document.getElementById('protocolTableBody');
+        protocolTableBody.innerHTML = '';
+        Object.entries(data.protocol_details).forEach(([protocol, details]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${protocol.toUpperCase()}</td>
+                <td>${Object.values(details)[0]}</td>
+                <td>${Object.keys(details)[0]}</td>
+            `;
+            protocolTableBody.appendChild(row);
+        });
+
+        // Update IP statistics table
+        const ipStatsTableBody = document.getElementById('ipStatsTableBody');
+        ipStatsTableBody.innerHTML = '';
+        Object.entries(data.ip_stats).forEach(([ip, stats]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${ip}</td>
+                <td>${stats.packets_sent}</td>
+                <td>${stats.packets_received}</td>
+                <td>${formatBytes(stats.total_bytes)}</td>
+            `;
+            ipStatsTableBody.appendChild(row);
+        });
+    }
+
+    // Check if there's analysis data in sessionStorage
+    const analysisData = sessionStorage.getItem('analysisData');
+    if (analysisData) {
+        updateDashboard(JSON.parse(analysisData));
+    }
+});
+</script>
+{% endblock %}

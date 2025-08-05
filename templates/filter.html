@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="filter-dashboard">
+    <!-- Search and Filter Controls -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="filter-card">
+                <h3>Advanced Filters</h3>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" id="searchInput" placeholder="Search IP, Protocol...">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="protocolFilter">
+                            <option value="">All Protocols</option>
+                            <option value="TCP">TCP</option>
+                            <option value="UDP">UDP</option>
+                            <option value="HTTP">HTTP</option>
+                            <option value="DNS">DNS</option>
+                            <option value="ICMP">ICMP</option>
+                            <option value="ARP">ARP</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="timeFilter">
+                            <option value="">All Time</option>
+                            <option value="1">Last 1 minute</option>
+                            <option value="5">Last 5 minutes</option>
+                            <option value="15">Last 15 minutes</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary w-100" onclick="applyFilters()">Apply Filters</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Protocol Tabs -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="protocol-tabs">
+                <ul class="nav nav-tabs" id="protocolTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#allProtocols">All</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tcpPanel">TCP</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#udpPanel">UDP</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#httpPanel">HTTP</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dnsPanel">DNS</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content mt-3">
+                    <div class="tab-pane fade show active" id="allProtocols">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Source IP</th>
+                                        <th>Destination IP</th>
+                                        <th>Protocol</th>
+                                        <th>Size</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allProtocolsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="tcpPanel">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Source IP:Port</th>
+                                        <th>Destination IP:Port</th>
+                                        <th>Flags</th>
+                                        <th>Size</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tcpTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Similar structure for other protocol panels -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const analysisData = JSON.parse(sessionStorage.getItem('analysisData') || '{}');
+    
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function populateTables(data) {
+        if (!data || !data.conversations) return;
+
+        const allProtocolsBody = document.getElementById('allProtocolsBody');
+        const tcpTableBody = document.getElementById('tcpTableBody');
+
+        // Clear existing data
+        allProtocolsBody.innerHTML = '';
+        tcpTableBody.innerHTML = '';
+
+        data.conversations.forEach(conv => {
+            // Populate all protocols table
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${conv.timestamp}</td>
+                <td>${conv.src_ip}</td>
+                <td>${conv.dst_ip}</td>
+                <td>${conv.protocol}</td>
+                <td>${formatBytes(conv.size)}</td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="showDetails('${conv.src_ip}')">
+                        <i class="bi bi-info-circle"></i>
+                    </button>
+                </td>
+            `;
+            allProtocolsBody.appendChild(row);
+
+            // Populate protocol-specific tables
+            if (conv.protocol === 'TCP') {
+                const tcpRow = document.createElement('tr');
+                tcpRow.innerHTML = `
+                    <td>${conv.timestamp}</td>
+                    <td>${conv.src_ip}</td>
+                    <td>${conv.dst_ip}</td>
+                    <td>-</td>
+                    <td>${formatBytes(conv.size)}</td>
+                `;
+                tcpTableBody.appendChild(tcpRow);
+            }
+        });
+    }
+
+    function applyFilters() {
+        const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        const protocolFilter = document.getElementById('protocolFilter').value;
+        const timeFilter = document.getElementById('timeFilter').value;
+
+        const filteredData = {
+            ...analysisData,
+            conversations: analysisData.conversations.filter(conv => {
+                const matchesSearch = searchTerm === '' || 
+                    conv.src_ip.toLowerCase().includes(searchTerm) ||
+                    conv.dst_ip.toLowerCase().includes(searchTerm) ||
+                    conv.protocol.toLowerCase().includes(searchTerm);
+
+                const matchesProtocol = protocolFilter === '' || 
+                    conv.protocol === protocolFilter;
+
+                return matchesSearch && matchesProtocol;
+            })
+        };
+
+        populateTables(filteredData);
+    }
+
+    // Initial population
+    populateTables(analysisData);
+
+    // Make applyFilters available globally
+    window.applyFilters = applyFilters;
+});
+
+function showDetails(ip) {
+    // Implement packet details view
+    alert(`Details for IP: ${ip}`);
+}
+</script>
+{% endblock %}

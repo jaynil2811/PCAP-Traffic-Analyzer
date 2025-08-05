@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="report-dashboard">
+    <!-- Report Configuration Section -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="report-config-card">
+                <h3>Report Configuration</h3>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Report Title</label>
+                            <input type="text" class="form-control" id="reportTitle" placeholder="Network Analysis Report">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label>Time Range</label>
+                            <select class="form-select" id="timeRange">
+                                <option value="all">All Time</option>
+                                <option value="last_hour">Last Hour</option>
+                                <option value="last_day">Last 24 Hours</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <h4>Include Sections</h4>
+                        <div class="form-check-inline">
+                            <input type="checkbox" class="form-check-input" id="includeOverview" checked>
+                            <label class="form-check-label">Overview</label>
+                        </div>
+                        <div class="form-check-inline">
+                            <input type="checkbox" class="form-check-input" id="includeProtocols" checked>
+                            <label class="form-check-label">Protocol Analysis</label>
+                        </div>
+                        <div class="form-check-inline">
+                            <input type="checkbox" class="form-check-input" id="includeTraffic" checked>
+                            <label class="form-check-label">Traffic Flow</label>
+                        </div>
+                        <div class="form-check-inline">
+                            <input type="checkbox" class="form-check-input" id="includeIPs" checked>
+                            <label class="form-check-label">IP Statistics</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Preview Section -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="report-preview-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3>Report Preview</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="generateReport('pdf')">
+                            <i class="bi bi-file-pdf"></i> Export PDF
+                        </button>
+                        <button class="btn btn-success ms-2" onclick="generateReport('excel')">
+                            <i class="bi bi-file-excel"></i> Export Excel
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="reportPreview" class="report-content">
+                    <!-- Report content will be dynamically populated -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Update the library imports -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const analysisData = JSON.parse(sessionStorage.getItem('analysisData') || '{}');
+    updatePreview();
+
+    // Update preview when configurations change
+    document.querySelectorAll('input, select').forEach(element => {
+        element.addEventListener('change', updatePreview);
+    });
+
+    function updatePreview() {
+        const preview = document.getElementById('reportPreview');
+        const title = document.getElementById('reportTitle').value || 'Network Analysis Report';
+
+        let html = `
+            <div class="report-section">
+                <h2>${title}</h2>
+                <p>Generated on: ${new Date().toLocaleString()}</p>
+            </div>
+        `;
+
+        if (document.getElementById('includeOverview').checked) {
+            html += generateOverviewSection(analysisData);
+        }
+        if (document.getElementById('includeProtocols').checked) {
+            html += generateProtocolSection(analysisData);
+        }
+        if (document.getElementById('includeTraffic').checked) {
+            html += generateTrafficSection(analysisData);
+        }
+        if (document.getElementById('includeIPs').checked) {
+            html += generateIPSection(analysisData);
+        }
+
+        preview.innerHTML = html;
+    }
+
+    function generateOverviewSection(data) {
+        return `
+            <div class="report-section">
+                <h3>Overview</h3>
+                <div class="overview-stats">
+                    <div class="stat-item">
+                        <span>Total Packets:</span>
+                        <span>${data.total_packets || 0}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Total Data:</span>
+                        <span>${formatBytes(data.bandwidth_usage?.total_mb * 1024 * 1024 || 0)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Average Bandwidth:</span>
+                        <span>${formatBytes(data.bandwidth_usage?.average || 0)}/s</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function generateProtocolSection(data) {
+        let protocolHtml = `
+            <div class="report-section">
+                <h3>Protocol Analysis</h3>
+                <table class="table table-dark">
+                    <thead>
+                        <tr>
+                            <th>Protocol</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        const protocols = data.protocols || {};
+        const total = Object.values(protocols).reduce((a, b) => a + b, 0);
+
+        for (const [protocol, count] of Object.entries(protocols)) {
+            const percentage = ((count / total) * 100).toFixed(2);
+            protocolHtml += `
+                <tr>
+                    <td>${protocol}</td>
+                    <td>${count}</td>
+                    <td>${percentage}%</td>
+                </tr>
+            `;
+        }
+
+        protocolHtml += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        return protocolHtml;
+    }
+
+    function generateTrafficSection(data) {
+        return `
+            <div class="report-section">
+                <h3>Traffic Flow</h3>
+                ${data.traffic_plot ? 
+                    `<img src="data:image/png;base64,${data.traffic_plot}" class="img-fluid">` :
+                    '<p>No traffic data available</p>'}
+            </div>
+        `;
+    }
+
+    function generateIPSection(data) {
+        let ipHtml = `
+            <div class="report-section">
+                <h3>IP Statistics</h3>
+                <table class="table table-dark">
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>Packets Sent</th>
+                            <th>Packets Received</th>
+                            <th>Total Bytes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        const ipStats = data.ip_stats || {};
+        for (const [ip, stats] of Object.entries(ipStats)) {
+            ipHtml += `
+                <tr>
+                    <td>${ip}</td>
+                    <td>${stats.packets_sent}</td>
+                    <td>${stats.packets_received}</td>
+                    <td>${formatBytes(stats.total_bytes)}</td>
+                </tr>
+            `;
+        }
+
+        ipHtml += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        return ipHtml;
+    }
+
+    window.generateReport = async function(type) {
+        const title = document.getElementById('reportTitle').value || 'Network Analysis Report';
+        const reportContent = document.getElementById('reportPreview');
+        
+        if (type === 'pdf') {
+            try {
+                const canvas = await html2canvas(reportContent, {
+                    scale: 2,
+                    backgroundColor: '#1a1a1a'
+                });
+                
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jspdf.jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+                
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save(`${title}.pdf`);
+            } catch (error) {
+                console.error('PDF generation error:', error);
+                alert('Error generating PDF');
+            }
+        } else if (type === 'excel') {
+            try {
+                const wb = XLSX.utils.book_new();
+                
+                // Overview Sheet
+                if (document.getElementById('includeOverview').checked) {
+                    const overviewData = [
+                        ['Network Analysis Report'],
+                        ['Generated on', new Date().toLocaleString()],
+                        [''],
+                        ['Metric', 'Value'],
+                        ['Total Packets', analysisData.total_packets || 0],
+                        ['Total Data', formatBytes(analysisData.bandwidth_usage?.total_mb * 1024 * 1024 || 0)],
+                        ['Average Bandwidth', formatBytes(analysisData.bandwidth_usage?.average || 0) + '/s']
+                    ];
+                    const wsOverview = XLSX.utils.aoa_to_sheet(overviewData);
+                    XLSX.utils.book_append_sheet(wb, wsOverview, 'Overview');
+                }
+
+                // Protocol Sheet
+                if (document.getElementById('includeProtocols').checked && analysisData.protocols) {
+                    const protocolData = [
+                        ['Protocol', 'Count', 'Percentage'],
+                        ...Object.entries(analysisData.protocols).map(([protocol, count]) => {
+                            const percentage = ((count / analysisData.total_packets) * 100).toFixed(2);
+                            return [protocol, count, `${percentage}%`];
+                        })
+                    ];
+                    const wsProtocols = XLSX.utils.aoa_to_sheet(protocolData);
+                    XLSX.utils.book_append_sheet(wb, wsProtocols, 'Protocols');
+                }
+
+                // IP Statistics Sheet
+                if (document.getElementById('includeIPs').checked && analysisData.ip_stats) {
+                    const ipData = [
+                        ['IP Address', 'Packets Sent', 'Packets Received', 'Total Bytes'],
+                        ...Object.entries(analysisData.ip_stats).map(([ip, stats]) => [
+                            ip,
+                            stats.packets_sent,
+                            stats.packets_received,
+                            stats.total_bytes
+                        ])
+                    ];
+                    const wsIP = XLSX.utils.aoa_to_sheet(ipData);
+                    XLSX.utils.book_append_sheet(wb, wsIP, 'IP Statistics');
+                }
+
+                XLSX.writeFile(wb, `${title}.xlsx`);
+            } catch (error) {
+                console.error('Excel generation error:', error);
+                alert('Error generating Excel file');
+            }
+        }
+    };
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+});
+</script>
+{% endblock %}
